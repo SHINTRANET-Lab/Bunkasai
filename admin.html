@@ -88,7 +88,8 @@
 
       document.getElementById('resetTimer').addEventListener('click', async () => {
         const boards = parseBoardsField();
-        try { await postJson('/update', { boards, action: 'reset' }); log(`reset -> ${boards?boards.join(','):'ALL'}`); } catch(e){log('エラー: '+e.message)}
+        const secs = Number(document.getElementById('timerSeconds').value) || 0;
+        try { await postJson('/update', { boards, action: 'reset', timer: secs }); log(`reset ${secs}s -> ${boards?boards.join(','):'ALL'}`); } catch(e){log('エラー: '+e.message)}
       });
 
       // 得点操作: +1 / -1 / reset
@@ -107,11 +108,17 @@
 
       document.getElementById('submitScoreBtn').addEventListener('click', async () => {
         const name = document.getElementById('submitName').value || '匿名';
-        const score = Number(document.getElementById('submitScore').value) || 0;
+        const scoreInput = document.getElementById('submitScore').value;
         const boards = parseBoardsField();
         try {
-          await postJson('/update', { boards, action: 'submit', name, score });
-          const d = document.getElementById('submitLog'); d.textContent = `${new Date().toLocaleTimeString()} - 送信: ${name} ${score}`;
+          // If score input is empty, omit the score property so server records current board score
+          const payload = { boards, action: 'submit', name };
+          if (scoreInput != null && String(scoreInput).trim() !== '') {
+            payload.score = Number(scoreInput);
+          }
+          await postJson('/update', payload);
+          const d = document.getElementById('submitLog');
+          d.textContent = `${new Date().toLocaleTimeString()} - 送信: ${name}${payload.score!==undefined ? ' ' + payload.score : ' (現在の得点を送信)'} `;
           await refreshScoreDisplay(boards ? boards[0] : '1');
         } catch (e) { log('送信エラー: '+e.message) }
       });

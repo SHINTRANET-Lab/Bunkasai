@@ -158,6 +158,8 @@ const server = http.createServer((req, res) => {
           applyTo(boards, (b) => {
             const s = ensureBoardState(b);
             s.timer = secs;
+            // remember configured timer so reset can return to this value
+            s.configTimer = secs;
             // ensure any previous timer is cleared, then start a fresh one
             stopTimer(b);
             startTimer(b);
@@ -167,7 +169,17 @@ const server = http.createServer((req, res) => {
         } else if (obj.action === 'stop') {
           applyTo(boards, (b) => { stopTimer(b); broadcastState(b); console.log(`[update] stop board=${b}`); });
         } else if (obj.action === 'reset') {
-          applyTo(boards, (b) => { const s = ensureBoardState(b); s.timer = 0; s.timerRunning = false; s.score = s.score || 0; stopTimer(b); broadcastState(b); console.log(`[update] reset board=${b}`); });
+          applyTo(boards, (b) => {
+            const s = ensureBoardState(b);
+            // reset to provided timer if given, otherwise to the configured timer saved at start
+            const newTimer = (typeof obj.timer !== 'undefined') ? (Number(obj.timer) || 0) : (typeof s.configTimer !== 'undefined' ? s.configTimer : 0);
+            s.timer = newTimer;
+            s.timerRunning = false;
+            s.score = s.score || 0;
+            stopTimer(b);
+            broadcastState(b);
+            console.log(`[update] reset board=${b} timer=${newTimer}`);
+          });
         } else if (obj.action === 'delta') {
           const d = Number(obj.delta) || 0;
           applyTo(boards, (b) => { const s = ensureBoardState(b); s.score = (s.score || 0) + d; broadcastState(b); console.log(`[update] delta board=${b} d=${d} score=${s.score}`); });
@@ -189,10 +201,11 @@ const server = http.createServer((req, res) => {
         if (obj.action === 'submit') {
           // expected: { name, score }
           const name = (obj.name || '匿名').toString().slice(0,64);
-          const sc = Number(obj.score) || 0;
           applyTo(boards, (b) => {
             const s = ensureBoardState(b);
             s.submissions = s.submissions || [];
+            // if score is provided in payload, use it; otherwise record the board's current score
+            const sc = (typeof obj.score !== 'undefined') ? (Number(obj.score) || 0) : (s.score || 0);
             s.submissions.push({ name, score: sc, ts: Date.now() });
             // keep only last 100 submissions to avoid unbounded growth
             if (s.submissions.length > 100) s.submissions.splice(0, s.submissions.length - 100);
