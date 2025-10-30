@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>管理画面 - 得点板</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <div class="header">
+          <div class="title">得点板 管理画面</div>
+          <div class="meta">複数のボードIDをカンマ区切りで指定できます（例: 1,2,3）。空欄は全体へ送信。</div>
+        </div>
+
+        <div style="margin-top:12px">
+          <label>ボードID（カンマ区切り、空 = 全体）</label>
+          <input type="text" id="boards" placeholder="例: 1,2,3" />
+        </div>
+
+        <div class="formRow" style="margin-top:12px">
+          <div>
+            <label>秒数（開始時にセット）</label><br>
+            <input type="number" id="timerSeconds" value="60" />
+          </div>
+          <div class="controlsRow">
+            <button class="btn" id="startTimer">開始</button>
+            <button class="ghost" id="stopTimer">停止</button>
+            <button class="ghost" id="resetTimer">リセット</button>
+          </div>
+        </div>
+
+        <div style="margin-top:14px">
+          <div>現在の得点: <span id="scoreDisplay">0</span></div>
+          <div class="controls" style="justify-content:flex-start;margin-top:8px">
+            <button class="ghost" id="decScore">-1</button>
+            <button class="btn" id="incScore">+1</button>
+            <button class="ghost" id="setScoreZero">0にリセット</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <h4>点数送信</h4>
+          <div class="formRow">
+            <label>名前 <input type="text" id="submitName" placeholder="名前（任意）" /></label>
+            <label>得点 <input type="number" id="submitScore" value="0" /></label>
+            <div style="align-self:center"><button class="btn" id="submitScoreBtn">点数を送信</button></div>
+          </div>
+          <div id="submitLog" style="color:var(--muted); margin-top:8px"></div>
+        </div>
+
+        <div style="margin-top:12px">
+          <button class="btn" id="broadcastAll">全ボードに今の状態を送る</button>
+        </div>
+
+        <div id="log" style="margin-top:20px; color:var(--muted)"></div>
+      </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+      function parseBoardsField() {
+        const raw = document.getElementById('boards').value.trim();
+        if (!raw) return null; // null -> broadcast all
+        return raw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+
+      function log(msg) { const d = document.getElementById('log'); d.innerHTML += `<div>${new Date().toLocaleTimeString()} - ${msg}</div>`; }
+
+      async function refreshScoreDisplay(board) {
+        try {
+          const s = await getJson(`/state?board=${encodeURIComponent(board)}`);
+          document.getElementById('scoreDisplay').textContent = (s.score == null ? 0 : s.score);
+        } catch (e) { /* ignore */ }
+      }
+
+      document.getElementById('startTimer').addEventListener('click', async () => {
+        const secs = Number(document.getElementById('timerSeconds').value) || 0;
+        const boards = parseBoardsField();
+        try { await postJson('/update', { boards, action: 'start', timer: secs }); log(`start ${secs}s -> ${boards?boards.join(','):'ALL'}`); } catch(e){log('エラー: '+e.message)}
+      });
+
+      document.getElementById('stopTimer').addEventListener('click', async () => {
+        const boards = parseBoardsField();
+        try { await postJson('/update', { boards, action: 'stop' }); log(`stop -> ${boards?boards.join(','):'ALL'}`); } catch(e){log('エラー: '+e.message)}
+      });
+
+      document.getElementById('resetTimer').addEventListener('click', async () => {
+        const boards = parseBoardsField();
+        try { await postJson('/update', { boards, action: 'reset' }); log(`reset -> ${boards?boards.join(','):'ALL'}`); } catch(e){log('エラー: '+e.message)}
+      });
+
+      // 得点操作: +1 / -1 / reset
+      document.getElementById('incScore').addEventListener('click', async () => {
+        const boards = parseBoardsField();
+        try { await postJson('/update', { boards, action: 'delta', delta: 1 }); log('+1 -> ' + (boards?boards.join(','):'ALL')); await refreshScoreDisplay(boards ? boards[0] : '1'); } catch(e){log('エラー: '+e.message)}
+      });
+      document.getElementById('decScore').addEventListener('click', async () => {
+        const boards = parseBoardsField();
+        try { await postJson('/update', { boards, action: 'delta', delta: -1 }); log('-1 -> ' + (boards?boards.join(','):'ALL')); await refreshScoreDisplay(boards ? boards[0] : '1'); } catch(e){log('エラー: '+e.message)}
+      });
+      document.getElementById('setScoreZero').addEventListener('click', async () => {
+        const boards = parseBoardsField();
+        try { await postJson('/update', { boards, action: 'set', score: 0 }); log('score=0 -> ' + (boards?boards.join(','):'ALL')); await refreshScoreDisplay(boards ? boards[0] : '1'); } catch(e){log('エラー: '+e.message)}
+      });
+
+      document.getElementById('submitScoreBtn').addEventListener('click', async () => {
+        const name = document.getElementById('submitName').value || '匿名';
+        const score = Number(document.getElementById('submitScore').value) || 0;
+        const boards = parseBoardsField();
+        try {
+          await postJson('/update', { boards, action: 'submit', name, score });
+          const d = document.getElementById('submitLog'); d.textContent = `${new Date().toLocaleTimeString()} - 送信: ${name} ${score}`;
+          await refreshScoreDisplay(boards ? boards[0] : '1');
+        } catch (e) { log('送信エラー: '+e.message) }
+      });
+
+      document.getElementById('broadcastAll').addEventListener('click', async () => {
+        const secs = Number(document.getElementById('timerSeconds').value) || 0;
+        const scoreVal = Number(document.getElementById('scoreDisplay').textContent) || 0;
+        try { await postJson('/update', { boards: null, action: 'broadcast', timer: secs, score: scoreVal }); log('broadcast ALL'); } catch(e){log('エラー: '+e.message)}
+      });
+
+      // 初期表示はボード1を取得
+      refreshScoreDisplay('1');
+
+      // SSE: 管理画面でも更新をリアルタイム表示
+      const esAdmin = new EventSource('/events?board=1');
+      esAdmin.onmessage = (e) => {
+        try { const d = JSON.parse(e.data); if (d.score != null) document.getElementById('scoreDisplay').textContent = d.score; } catch(e){}
+      };
+    </script>
+  </body>
+</html>

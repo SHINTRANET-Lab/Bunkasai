@@ -1,0 +1,11 @@
+{
+  "name": "bunkasai-scoreboard",
+  "version": "0.1.0",
+  "description": "Simple scoreboard and admin for kick-bowling using SSE",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ja">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<title>キックボーリング 得点板</title>
+		<link rel="stylesheet" href="styles.css">
+	</head>
+	<body>
+		<div class="wrap">
+			<div class="card">
+				<div class="header">
+					<div class="title">キックボーリング 得点板</div>
+					<div class="meta">ボードID: <strong id="boardId">—</strong></div>
+				</div>
+
+				<div class="displayGrid">
+					<div class="left">
+						<div class="timer" id="timer">00:00</div>
+						<div style="text-align:center;margin-top:12px"><span class="scoreBadge" id="score">0</span></div>
+						<div class="topScore">管理画面: <a href="admin.html" style="color:var(--accent)">admin.html</a></div>
+						<div class="controls" style="justify-content:center;margin-top:18px">
+							<button class="btn" onclick="document.documentElement.requestFullscreen().catch(()=>{})">フル画面</button>
+							<button class="ghost" onclick="location.reload()">再読み込み</button>
+						</div>
+					</div>
+
+					<div class="right">
+						<div class="ranking card">
+							<h4>ランキング (Top 10)</h4>
+							<div id="rankingList" style="min-height:120px">ランキング無し</div>
+							<div style="margin-top:8px;text-align:right;color:var(--muted)">最高点: <strong id="topScore">0</strong></div>
+						</div>
+					</div>
+				</div>
+					</div>
+
+			<script src="common.js"></script>
+			<script>
+				function escapeHtml(s) { return String(s).replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+				// ボードIDは ?board=1 などのクエリから取得
+				const boardId = getQueryParam('board') || '1';
+				document.getElementById('boardId').textContent = boardId;
+
+				const es = new EventSource(`/events?board=${encodeURIComponent(boardId)}`);
+				es.onmessage = (e) => {
+					try {
+						const data = JSON.parse(e.data);
+						if (data.timer != null) document.getElementById('timer').textContent = formatTime(data.timer);
+						if (data.score != null) document.getElementById('score').textContent = data.score;
+						if (typeof data.topScore !== 'undefined') document.getElementById('topScore').textContent = data.topScore;
+						if (Array.isArray(data.ranking)) {
+							const list = data.ranking.slice(0,10).map((r,i)=>`${i+1}. ${escapeHtml(r.name)} — ${r.score}`).join('<br>');
+							document.getElementById('rankingList').innerHTML = list;
+						}
+					} catch (err) { console.error('受信データ解析エラー', err); }
+				};
+				es.onerror = (err) => { console.error('SSE エラー', err); };
+
+				// 初期値を取る（任意）
+				(async () => {
+					try {
+						const s = await getJson(`/state?board=${encodeURIComponent(boardId)}`);
+						if (s.timer != null) document.getElementById('timer').textContent = formatTime(s.timer);
+						if (s.score != null) document.getElementById('score').textContent = s.score;
+						// fetch ranking
+						try {
+							const r = await getJson(`/ranking?board=${encodeURIComponent(boardId)}`);
+							if (r.ranking) {
+								const list = r.ranking.slice(0,10).map((x,i)=>`${i+1}. ${escapeHtml(x.name)} — ${x.score}`).join('<br>');
+								document.getElementById('rankingList').innerHTML = list;
+								if (r.ranking.length) document.getElementById('topScore').textContent = r.ranking[0].score;
+							}
+						} catch(e) {}
+					} catch (e) { /* ignore */ }
+				})();
+			</script>
+	</body>
+</html>
