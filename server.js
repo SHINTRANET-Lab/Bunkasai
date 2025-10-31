@@ -157,14 +157,14 @@ const server = http.createServer((req, res) => {
           const secs = Number(obj.timer) || 0;
           applyTo(boards, (b) => {
             const s = ensureBoardState(b);
-            s.timer = secs;
-            // remember configured timer so reset can return to this value
-            s.configTimer = secs;
+            // do NOT overwrite the live timer value when pressing start
+            // but remember the configured timer so reset can return to this value
+            if (typeof obj.timer !== 'undefined') s.configTimer = secs;
             // ensure any previous timer is cleared, then start a fresh one
             stopTimer(b);
             startTimer(b);
             broadcastState(b);
-            console.log(`[update] start board=${b} timer=${secs}`);
+            console.log(`[update] start board=${b} timerConfig=${s.configTimer}`);
           });
         } else if (obj.action === 'stop') {
           applyTo(boards, (b) => { stopTimer(b); broadcastState(b); console.log(`[update] stop board=${b}`); });
